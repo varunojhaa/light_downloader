@@ -97,9 +97,20 @@ cross-platform because it uses Win32 controls.
 ### Build all platform executables in GitHub Actions
 
 The repository includes `.github/workflows/release.yml`. In GitHub, open
-**Actions → Build release executables → Run workflow**. It creates downloadable
-artifacts for the Rust CLI on Windows, macOS, and Linux, plus the Windows GUI
-and C worker. Creating a tag such as `v1.0.0` runs the same build automatically.
+**Actions → Build release executables → Run workflow**. A manual run creates
+downloadable Actions artifacts for the Rust CLI on Windows, macOS, and Linux,
+plus the Windows GUI and C worker. Creating a version tag automatically builds
+the files and publishes them on a GitHub Release.
+
+```powershell
+git add .
+git commit -m "Release 1.0.0"
+git tag v1.0.0
+git push origin master --tags
+```
+
+After the workflow finishes, open **Releases** on GitHub. The executables will
+be attached to the `v1.0.0` release for download.
 
 ## Open source and GitHub
 

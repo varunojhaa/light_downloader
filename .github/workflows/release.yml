@@ -7,7 +7,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   rust-cli:
@@ -76,3 +76,25 @@ jobs:
             build-llvm/LightDownloader.exe
             build-llvm/light-downloader.exe
           if-no-files-found: error
+
+  github-release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [rust-cli, windows-gui]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all executables
+        uses: actions/download-artifact@v4
+        with:
+          pattern: light-downloader-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release with executables
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Light Downloader ${GITHUB_REF_NAME}" \
+            --generate-notes
