@@ -60,24 +60,46 @@ notifications, and platform-specific settings are not yet implemented here;
 they require additional protocol and UI code and should not be represented as
 complete merely by matching the downloader executable.
 
-The Rust prototype uses the same `.part`/`.idm` concept but is optional. The C
-worker is the recommended default for low memory and low CPU usage.
+The Rust CLI uses the same `.part`/`.idm` concept and is the portable backend
+for Windows, macOS, and Linux. It uses bounded 64 KiB buffers, a capped worker
+pool, retry backoff, atomic checkpoints, and no GUI/runtime dependency. The C
+WinHTTP worker remains the recommended Windows backend when minimum memory use
+and zero third-party DLLs are the priority.
 
 ## Installers and platform support
 
-The current source is a native Windows application because it uses Win32 and
-WinHTTP. Windows builds can be packaged with Inno Setup:
+The Rust CLI is native on Windows, macOS, and Linux. The Win32 GUI and C
+WinHTTP worker are Windows-only. Build the portable backend with Cargo or CMake:
+
+```sh
+cargo build --release --manifest-path rust-core/Cargo.toml
+# or: cmake -S . -B build && cmake --build build
+```
+
+Windows builds can be packaged with Inno Setup:
 
 ```powershell
 .\build-llvm.ps1
 iscc packaging\windows\light-downloader.iss
 ```
 
-`packaging/unix/package.sh` packages a platform-native binary supplied by a
-future macOS/Linux backend as a macOS app/DMG or Linux tarball/DEB. It does not
-convert the Windows executable into a Unix application. macOS and Linux
-download-manager backends are not implemented yet; adding those backends is
-required before those installers can contain working native applications.
+`packaging/unix/package.sh` packages the native Rust CLI as a macOS app/DMG or
+Linux tarball and, on x86_64 Debian systems, a DEB:
+
+```sh
+packaging/unix/package.sh rust-core/target/release/light-downloader 1.0.0
+```
+
+These scripts package a native binary; they do not convert the Windows
+executable into a Unix application. The GUI is intentionally not advertised as
+cross-platform because it uses Win32 controls.
+
+### Build all platform executables in GitHub Actions
+
+The repository includes `.github/workflows/release.yml`. In GitHub, open
+**Actions → Build release executables → Run workflow**. It creates downloadable
+artifacts for the Rust CLI on Windows, macOS, and Linux, plus the Windows GUI
+and C worker. Creating a tag such as `v1.0.0` runs the same build automatically.
 
 ## Open source and GitHub
 

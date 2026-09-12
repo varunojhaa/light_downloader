@@ -30,7 +30,7 @@ EOF
     cp "$APP" "$STAGE/usr/bin/light-downloader"; chmod +x "$STAGE/usr/bin/light-downloader"
     printf '[Desktop Entry]\nType=Application\nName=Light Downloader\nExec=light-downloader\nTerminal=false\nCategories=Network;FileTransfer;\n' > "$STAGE/usr/share/applications/light-downloader.desktop"
     tar -C "$OUT" -czf "$OUT/Light-Downloader-$VERSION-linux.tar.gz" "light-downloader-$VERSION-linux"
-    if command -v dpkg-deb >/dev/null 2>&1; then
+    if command -v dpkg-deb >/dev/null 2>&1 && [ "$(uname -m)" = "x86_64" ]; then
       DEB="$OUT/deb"; rm -rf "$DEB"; mkdir -p "$DEB/DEBIAN" "$DEB/usr/bin" "$DEB/usr/share/applications"
       cp "$APP" "$DEB/usr/bin/light-downloader"; chmod +x "$DEB/usr/bin/light-downloader"; cp "$STAGE/usr/share/applications/light-downloader.desktop" "$DEB/usr/share/applications/"
       printf 'Package: light-downloader\nVersion: %s\nArchitecture: amd64\nMaintainer: Light Downloader contributors\nDescription: Lightweight download manager\n' "$VERSION" > "$DEB/DEBIAN/control"

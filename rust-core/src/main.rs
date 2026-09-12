@@ -6,115 +6,129 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-const MAGIC: &str = "IDMR1";
+const MAGIC: &str = "IDMR2";
 const BUFFER_SIZE: usize = 64 * 1024;
+const MAX_CONNECTIONS: usize = 16;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Segment { first: u64, last: u64, completed: u64 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct State { magic: String, url: String, size: u64, range_supported: bool, segments: Vec<Segment> }
 
-fn usage() { println!("IDM Rust 1.0\nUsage: idm-rust URL [OUTPUT] [--connections N] [--retries N] [--limit BYTES_PER_SECOND]"); }
+struct Stop(Arc<Mutex<bool>>);
+impl Stop { fn load(&self) -> bool { *self.0.lock().unwrap_or_else(|e| e.into_inner()) } }
 
-fn arg_value(args: &[String], name: &str, default: u64) -> u64 {
-    args.windows(2).find(|p| p[0] == name).and_then(|p| p[1].parse().ok()).unwrap_or(default)
-}
-
+fn usage() { println!("Light Downloader CLI\nUsage: light-downloader URL [OUTPUT] [--connections N] [--retries N] [--limit BYTES_PER_SECOND]"); }
+fn arg_value(args: &[String], name: &str, default: u64) -> u64 { args.windows(2).find(|p| p[0] == name).and_then(|p| p[1].parse().ok()).unwrap_or(default) }
 fn state_path(output: &Path) -> PathBuf { PathBuf::from(format!("{}.idm", output.display())) }
 fn part_path(output: &Path) -> PathBuf { PathBuf::from(format!("{}.part", output.display())) }
 
-fn save_state(path: &Path, state: &State) -> io::Result<()> {
-    let tmp = path.with_extension("idm.tmp");
-    let data = serde_json::to_vec_pretty(state).map_err(io::Error::other)?;
-    fs::write(&tmp, data)?;
-    fs::rename(tmp, path)
+fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
+    if to.exists() { fs::remove_file(to)?; }
+    fs::rename(from, to)
 }
 
-fn response_size(response: &Response) -> Option<u64> {
-    response.headers().get(CONTENT_LENGTH)?.to_str().ok()?.parse().ok()
+fn save_state(path: &Path, state: &State) -> io::Result<()> {
+    let tmp = PathBuf::from(format!("{}.tmp", path.display()));
+    let data = serde_json::to_vec_pretty(state).map_err(io::Error::other)?;
+    let mut file = File::create(&tmp)?;
+    file.write_all(&data)?;
+    file.sync_all()?;
+    replace_file(&tmp, path)
 }
+
+fn response_size(response: &Response) -> Option<u64> { response.headers().get(CONTENT_LENGTH)?.to_str().ok()?.parse().ok() }
+fn total_from_range(response: &Response) -> Option<u64> { response.headers().get(CONTENT_RANGE)?.to_str().ok()?.rsplit('/').next()?.parse().ok() }
 
 fn probe(client: &Client, url: &str) -> Result<(u64, bool), Box<dyn std::error::Error>> {
-    let head = client.head(url).send()?;
-    let size = response_size(&head).or_else(|| head.headers().get(CONTENT_RANGE).and_then(|v| v.to_str().ok()).and_then(|v| v.rsplit('/').next()?.parse().ok()));
-    if let Some(size) = size { return Ok((size, head.headers().get("accept-ranges").map(|v| v == "bytes").unwrap_or(false))); }
-    let probe = client.get(url).header(RANGE, "bytes=0-0").send()?;
-    let range = probe.headers().get(CONTENT_RANGE).and_then(|v| v.to_str().ok()).and_then(|v| v.split('/').nth(1)?.parse().ok());
-    let supports_ranges = range.is_some();
-    Ok((range.or_else(|| response_size(&probe)).ok_or("server did not provide a file size")?, supports_ranges))
+    let head = client.head(url).send()?.error_for_status()?;
+    if let Some(size) = response_size(&head).or_else(|| total_from_range(&head)) {
+        let ranges = head.headers().get("accept-ranges").and_then(|v| v.to_str().ok()).map(|v| v.eq_ignore_ascii_case("bytes")).unwrap_or(false);
+        return Ok((size, ranges));
+    }
+    let response = client.get(url).header(RANGE, "bytes=0-0").send()?.error_for_status()?;
+    Ok((total_from_range(&response).or_else(|| response_size(&response)).ok_or("server did not provide a file size")?, response.status().as_u16() == 206))
 }
 
-fn fetch_segment(client: &Client, url: &str, part: &Path, segment: &mut Segment, retries: u64, limit: u64, stop: &AtomicStop) -> Result<(), String> {
+fn fetch_segment(client: &Client, url: &str, part: &Path, segment: &mut Segment, ranges: bool, retries: u64, limit: u64, stop: &Stop) -> Result<(), String> {
+    let length = segment.last - segment.first + 1;
     let mut attempt = 0;
-    while segment.completed < segment.last - segment.first + 1 {
+    while segment.completed < length {
         if stop.load() { return Ok(()); }
         let start = segment.first + segment.completed;
         let range = format!("bytes={}-{}", start, segment.last);
-        let result = client.get(url).header(RANGE, range).send().and_then(|r| r.error_for_status());
-        match result {
-            Ok(mut response) => {
+        let request = if ranges { client.get(url).header(RANGE, range) } else { client.get(url) };
+        match request.send() {
+            Ok(mut response) if (ranges && response.status().as_u16() == 206) || (!ranges && response.status().is_success()) => {
                 let mut file = OpenOptions::new().write(true).open(part).map_err(|e| e.to_string())?;
                 file.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
                 let mut buffer = [0u8; BUFFER_SIZE];
+                let began = Instant::now(); let mut bytes = 0u64;
                 loop {
                     if stop.load() { return Ok(()); }
                     let n = response.read(&mut buffer).map_err(|e| e.to_string())?;
                     if n == 0 { break; }
                     file.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
-                    segment.completed += n as u64;
-                    if limit > 0 { thread::sleep(Duration::from_secs_f64(n as f64 / limit as f64)); }
+                    segment.completed += n as u64; bytes += n as u64;
+                    if limit > 0 { let wanted = Duration::from_secs_f64(bytes as f64 / limit as f64); if let Some(wait) = wanted.checked_sub(began.elapsed()) { thread::sleep(wait); } }
                 }
-                return Ok(());
+                if segment.completed == length { return Ok(()); }
+                attempt += 1;
             }
-            Err(_error) if attempt < retries => { attempt += 1; thread::sleep(Duration::from_millis(500 * attempt)); }
+            Ok(_) if attempt < retries => { attempt += 1; }
+            Ok(_) => return Err(if ranges { "server ignored byte range request" } else { "server returned an unsuccessful response" }.into()),
+            Err(error) if attempt < retries => { attempt += 1; eprintln!("retry {}: {}", attempt, error); }
             Err(error) => return Err(error.to_string()),
         }
+        thread::sleep(Duration::from_millis(250 * attempt.min(8)));
     }
     Ok(())
 }
-
-struct AtomicStop(Arc<Mutex<bool>>);
-impl AtomicStop { fn load(&self) -> bool { *self.0.lock().unwrap() } }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 || args[1] == "--help" { usage(); return Ok(()); }
     let url = args[1].clone();
     let output = PathBuf::from(args.get(2).filter(|v| !v.starts_with('-')).cloned().unwrap_or_else(|| url.rsplit('/').next().filter(|v| !v.is_empty()).unwrap_or("download.bin").to_string()));
-    let connections = arg_value(&args, "--connections", 8).clamp(1, 16) as usize;
-    let retries = arg_value(&args, "--retries", 3);
-    let limit = arg_value(&args, "--limit", 0);
-    let client = Client::builder().user_agent("IDM-Rust/1.0").build()?;
+    let connections = (arg_value(&args, "--connections", 8) as usize).clamp(1, MAX_CONNECTIONS);
+    let retries = arg_value(&args, "--retries", 3); let limit = arg_value(&args, "--limit", 0);
+    let client = Client::builder().user_agent("LightDownloader/1.0").build()?;
     let part = part_path(&output); let state_file = state_path(&output);
-    let stop_flag = Arc::new(Mutex::new(false));
-    let handler_flag = stop_flag.clone();
-    ctrlc::set_handler(move || { *handler_flag.lock().unwrap() = true; }).ok();
-    let stop = AtomicStop(stop_flag);
+    let flag = Arc::new(Mutex::new(false)); let handler_flag = flag.clone();
+    ctrlc::set_handler(move || { *handler_flag.lock().unwrap_or_else(|e| e.into_inner()) = true; }).ok();
+    let stop = Stop(flag);
     let mut state: State = match fs::read(&state_file).ok().and_then(|d| serde_json::from_slice(&d).ok()) {
-        Some(s) if s.magic == MAGIC && s.url == url => s,
-        _ => { let (size, ranges) = probe(&client, &url)?; let count = if ranges { connections } else { 1 }; let chunk = (size + count as u64 - 1) / count as u64; let segments = (0..count).map(|i| { let first = i as u64 * chunk; let last = (first + chunk).min(size) - 1; Segment { first, last, completed: 0 } }).collect(); State { magic: MAGIC.into(), url: url.clone(), size, range_supported: ranges, segments } }
+        Some(s) if s.magic == MAGIC && s.url == url && s.segments.iter().all(|x| x.first <= x.last && x.completed <= x.last - x.first + 1) => s,
+        _ => { let (size, ranges) = probe(&client, &url)?; let count = if ranges && size > 0 { connections.min(size as usize) } else { 1 }; let chunk = size.div_ceil(count as u64); let segments = (0..count).filter_map(|i| { let first = i as u64 * chunk; (first < size).then(|| Segment { first, last: (first + chunk).min(size) - 1, completed: 0 }) }).collect(); State { magic: MAGIC.into(), url: url.clone(), size, range_supported: ranges, segments } }
     };
-    if state.size == 0 { fs::write(&part, [])?; fs::rename(&part, &output)?; fs::remove_file(&state_file).ok(); return Ok(()); }
-    let mut file = OpenOptions::new().create(true).write(true).open(&part)?; file.set_len(state.size)?; drop(file);
-    save_state(&state_file, &state)?;
-    let shared = Arc::new(Mutex::new(state.segments.clone()));
-    let mut handles = Vec::new();
-    for index in 0..state.segments.len() {
-        let client = client.clone(); let url = url.clone(); let part = part.clone(); let shared = shared.clone(); let stop_ref = AtomicStop(stop.0.clone());
-        handles.push(thread::spawn(move || {
-            let mut segment = { shared.lock().unwrap()[index].clone() };
-            let result = fetch_segment(&client, &url, &part, &mut segment, retries, limit, &stop_ref);
-            shared.lock().unwrap()[index] = segment;
-            result
-        }));
+    if state.size == 0 { File::create(&part)?; replace_file(&part, &output)?; fs::remove_file(&state_file).ok(); return Ok(()); }
+    if !state.range_supported {
+        state.segments = vec![Segment { first: 0, last: state.size - 1, completed: 0 }];
+        if part.exists() { fs::remove_file(&part)?; }
     }
-    for handle in handles { handle.join().map_err(|_| "worker thread panicked")??; }
-    state.segments = Arc::try_unwrap(shared).map_err(|_| "state still referenced")?.into_inner().map_err(|_| "state lock poisoned")?;
+    let existing = fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+    if existing != state.size { let file = OpenOptions::new().create(true).write(true).truncate(false).open(&part)?; file.set_len(state.size)?; }
     save_state(&state_file, &state)?;
+    let shared = Arc::new(Mutex::new(state.segments.clone())); let mut handles = Vec::new();
+    for index in 0..state.segments.len() {
+        let (client, url, part, shared, stop_ref) = (client.clone(), url.clone(), part.clone(), shared.clone(), Stop(stop.0.clone()));
+        let ranges = state.range_supported;
+        handles.push(thread::spawn(move || { let mut segment = shared.lock().unwrap_or_else(|e| e.into_inner())[index].clone(); let result = fetch_segment(&client, &url, &part, &mut segment, ranges, retries, limit, &stop_ref); shared.lock().unwrap_or_else(|e| e.into_inner())[index] = segment; result }));
+    }
+    let mut error = None;
+    for handle in handles {
+        match handle.join() {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => error = Some(e),
+            Err(_) => error = Some("worker thread panicked".into()),
+        }
+    }
+    state.segments = shared.lock().unwrap_or_else(|e| e.into_inner()).clone(); save_state(&state_file, &state)?;
+    if let Some(e) = error { return Err(e.into()); }
     if stop.load() { println!("Paused. Run the same command to resume."); return Ok(()); }
     if state.segments.iter().any(|s| s.completed < s.last - s.first + 1) { return Err("download incomplete".into()); }
-    fs::rename(&part, &output)?; fs::remove_file(state_file).ok(); println!("Completed: {}", output.display()); Ok(())
+    replace_file(&part, &output)?; fs::remove_file(state_file).ok(); println!("Completed: {}", output.display()); Ok(())
 }

@@ -1,0 +1,17 @@
+name: Portable CLI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: cargo build --release --manifest-path rust-core/Cargo.toml
+      - run: cargo test --manifest-path rust-core/Cargo.toml
