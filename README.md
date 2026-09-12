@@ -16,6 +16,9 @@ under `rust-core` as an optional backend.
 - Progress, size, speed, and connection count in the GUI.
 - Per-transfer bandwidth limit (`--limit`), retry count, and range fallback.
 - GUI process isolation: each active transfer has its own worker process.
+- Queue controls for starting/pausing all downloads and clearing completed items.
+- Per-download connection count, retry count, and bandwidth limit settings.
+- Open completed files directly and remove downloads without deleting their files.
 
 ## LLVM build
 
@@ -61,14 +64,14 @@ they require additional protocol and UI code and should not be represented as
 complete merely by matching the downloader executable.
 
 The Rust CLI uses the same `.part`/`.ld` concept and is the portable backend
-for Windows, macOS, and Linux. It uses bounded 64 KiB buffers, a capped worker
+for Windows and Linux. It uses bounded 64 KiB buffers, a capped worker
 pool, retry backoff, atomic checkpoints, and no GUI/runtime dependency. The C
 WinHTTP worker remains the recommended Windows backend when minimum memory use
 and zero third-party DLLs are the priority.
 
 ## Installers and platform support
 
-The Rust CLI is native on Windows, macOS, and Linux. The Win32 GUI and C
+The Rust CLI is native on Windows and Linux. The Win32 GUI and C
 WinHTTP worker are Windows-only. Build the portable backend with Cargo or CMake:
 
 ```sh
@@ -83,8 +86,8 @@ Windows builds can be packaged with Inno Setup:
 iscc packaging\windows\light-downloader.iss
 ```
 
-`packaging/unix/package.sh` packages the native Rust CLI as a macOS app/DMG or
-Linux tarball and, on x86_64 Debian systems, a DEB:
+`packaging/unix/package.sh` packages the native Rust CLI as a Linux tarball and,
+on x86_64 Debian systems, a DEB:
 
 ```sh
 packaging/unix/package.sh rust-core/target/release/light-downloader 1.0.0
@@ -98,7 +101,7 @@ cross-platform because it uses Win32 controls.
 
 The repository includes `.github/workflows/release.yml`. In GitHub, open
 **Actions → Build release executables → Run workflow**. A manual run creates
-downloadable Actions artifacts for the Rust CLI on Windows, macOS, and Linux,
+downloadable Actions artifacts for the Rust CLI on Windows and Linux,
 plus the Windows GUI and C worker. Creating a version tag automatically builds
 the files and publishes them on a GitHub Release.
 

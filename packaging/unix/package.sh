@@ -12,18 +12,6 @@ if [ ! -f "$APP" ]; then
 fi
 mkdir -p "$OUT"
 case "$(uname -s)" in
-  Darwin)
-    APPDIR="$OUT/Light Downloader.app/Contents/MacOS"
-    mkdir -p "$APPDIR"
-    cp "$APP" "$APPDIR/LightDownloader"
-    chmod +x "$APPDIR/LightDownloader"
-    cat > "$OUT/Light Downloader.app/Contents/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>CFBundleName</key><string>Light Downloader</string><key>CFBundleIdentifier</key><string>org.lightdownloader.app</string><key>CFBundleVersion</key><string>$VERSION</string><key>CFBundleExecutable</key><string>LightDownloader</string></dict></plist>
-EOF
-    if command -v hdiutil >/dev/null 2>&1; then hdiutil create -volname "Light Downloader" -srcfolder "$OUT/Light Downloader.app" -ov -format UDZO "$OUT/Light-Downloader-$VERSION.dmg"; fi
-    ;;
   Linux)
     STAGE="$OUT/light-downloader-$VERSION-linux"
     rm -rf "$STAGE"; mkdir -p "$STAGE/usr/bin" "$STAGE/usr/share/applications"
@@ -37,5 +25,5 @@ EOF
       dpkg-deb --build "$DEB" "$OUT/Light-Downloader-$VERSION-amd64.deb" >/dev/null
     fi
     ;;
-  *) echo "Unsupported host: use this script on macOS or Linux" >&2; exit 1;;
+  *) echo "Unsupported host: use this script on Linux" >&2; exit 1;;
 esac

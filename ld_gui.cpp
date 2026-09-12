@@ -16,7 +16,9 @@ namespace {
 constexpr int IDC_URL = 1001, IDC_OUTPUT = 1002, IDC_BROWSE = 1003;
 constexpr int IDC_ADD = 1004, IDC_START = 1005, IDC_PAUSE = 1006;
 constexpr int IDC_REMOVE = 1007, IDC_LIST = 1008, IDC_STATUS = 1009;
-constexpr int IDC_CONNECTIONS = 1010;
+constexpr int IDC_CONNECTIONS = 1010, IDC_RETRIES = 1011, IDC_LIMIT = 1012;
+constexpr int IDC_START_ALL = 1013, IDC_PAUSE_ALL = 1014, IDC_CLEAR = 1015;
+constexpr int IDC_OPEN = 1016;
 
 struct Task {
     std::wstring url;
@@ -31,6 +33,7 @@ struct Task {
 };
 
 HWND g_window = nullptr, g_url = nullptr, g_output = nullptr, g_connections = nullptr;
+HWND g_retries = nullptr, g_limit = nullptr;
 HWND g_list = nullptr, g_status = nullptr;
 HFONT g_font = nullptr, g_titleFont = nullptr;
 HBRUSH g_background = nullptr, g_panel = nullptr;
@@ -122,6 +125,9 @@ bool state_progress(const std::wstring& output, uint64_t& completed, uint64_t& t
     rewind(file);
     wchar_t line[512] = {};
     std::wstring json;
+    int connections = 8;
+    int retries = 3;
+    uint64_t limit = 0;
     while (fgetws(line, ARRAYSIZE(line), file)) json += line;
     fclose(file);
     const size_t sizeMarker = json.find(L"\"size\"");
@@ -196,9 +202,10 @@ std::wstring worker_path() {
 
 bool start_task(Task& task) {
     if (task.process && WaitForSingleObject(task.process, 0) == WAIT_TIMEOUT) return true;
-    std::wstring connections = text(g_connections);
-    if (connections.empty()) connections = L"8";
-    std::wstring command = L"\"" + worker_path() + L"\" \"" + task.url + L"\" \"" + task.output + L"\" --connections " + connections;
+    std::wstring command = L"\"" + worker_path() + L"\" \"" + task.url + L"\" \"" + task.output +
+        L"\" --connections " + std::to_wstring(task.connections) +
+        L" --retries " + std::to_wstring(task.retries) +
+        L" --limit " + std::to_wstring(task.limit);
     std::vector<wchar_t> commandLine(command.begin(), command.end()); commandLine.push_back(L'\0');
     STARTUPINFOW startup{}; startup.cb = sizeof(startup);
     PROCESS_INFORMATION process{};
@@ -261,6 +268,9 @@ void add_download() {
         if (output.empty()) output = L"download.bin";
     }
     Task task; task.url = url; task.output = output; task.part = output + L".part";
+    task.connections = std::clamp(_wtoi(text(g_connections).c_str()), 1, 16);
+    task.retries = std::clamp(_wtoi(text(g_retries).c_str()), 0, 10);
+    task.limit = _wcstoui64(text(g_limit).c_str(), nullptr, 10);
     g_tasks.push_back(std::move(task));
     set_text(g_url, L""); set_text(g_output, L""); refresh_list();
     start_task(g_tasks.back()); refresh_list();
@@ -272,6 +282,24 @@ void remove_selected() {
     Task& task = g_tasks[static_cast<size_t>(selected)];
     if (task.process) { TerminateProcess(task.process, 1); CloseHandle(task.process); }
     g_tasks.erase(g_tasks.begin() + selected); refresh_list();
+}
+
+void start_all() { for (Task& task : g_tasks) start_task(task); refresh_list(); }
+
+void pause_all() { for (Task& task : g_tasks) pause_task(task); refresh_list(); }
+
+void clear_completed() {
+    for (size_t i = g_tasks.size(); i-- > 0;) {
+        Task& task = g_tasks[i];
+        if (!task.process && GetFileAttributesW(task.output.c_str()) != INVALID_FILE_ATTRIBUTES) g_tasks.erase(g_tasks.begin() + static_cast<ptrdiff_t>(i));
+    }
+    refresh_list();
+}
+
+void open_selected() {
+    const int selected = ListView_GetNextItem(g_list, -1, LVNI_SELECTED);
+    if (selected >= 0 && selected < static_cast<int>(g_tasks.size()))
+        ShellExecuteW(g_window, L"open", g_tasks[static_cast<size_t>(selected)].output.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -290,27 +318,35 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wParam, LPARAM lP
         CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 428, 142, 110, 34, window, (HMENU)IDC_BROWSE, nullptr, nullptr);
         CreateWindowW(L"STATIC", L"Connections", WS_CHILD | WS_VISIBLE, 560, 101, 100, 22, window, nullptr, nullptr, nullptr);
         g_connections = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"8", WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_CENTER, 665, 96, 55, 34, window, (HMENU)IDC_CONNECTIONS, nullptr, nullptr);
+        CreateWindowW(L"STATIC", L"Retries", WS_CHILD | WS_VISIBLE, 28, 188, 70, 22, window, nullptr, nullptr, nullptr);
+        g_retries = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"3", WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_CENTER, 92, 183, 55, 30, window, (HMENU)IDC_RETRIES, nullptr, nullptr);
+        CreateWindowW(L"STATIC", L"Limit B/s (0 = unlimited)", WS_CHILD | WS_VISIBLE, 165, 188, 165, 22, window, nullptr, nullptr, nullptr);
+        g_limit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_CENTER, 335, 183, 95, 30, window, (HMENU)IDC_LIMIT, nullptr, nullptr);
         CreateWindowW(L"BUTTON", L"Add download", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 560, 142, 160, 34, window, (HMENU)IDC_ADD, nullptr, nullptr);
-        g_list = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"", WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS, 28, 205, 692, 270, window, (HMENU)IDC_LIST, nullptr, nullptr);
+        g_list = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"", WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS, 28, 225, 692, 250, window, (HMENU)IDC_LIST, nullptr, nullptr);
         ListView_SetExtendedListViewStyle(g_list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_GRIDLINES);
         const wchar_t* headers[] = {L"File", L"Status", L"Progress", L"Size", L"Speed"}; const int widths[] = {245, 115, 90, 150, 92};
         for (int i = 0; i < 5; ++i) { LVCOLUMNW column{}; column.mask = LVCF_TEXT | LVCF_WIDTH; column.pszText = const_cast<wchar_t*>(headers[i]); column.cx = widths[i]; ListView_InsertColumn(g_list, i, &column); }
         CreateWindowW(L"BUTTON", L"Start / resume", WS_CHILD | WS_VISIBLE, 28, 494, 140, 36, window, (HMENU)IDC_START, nullptr, nullptr);
         CreateWindowW(L"BUTTON", L"Pause", WS_CHILD | WS_VISIBLE, 178, 494, 110, 36, window, (HMENU)IDC_PAUSE, nullptr, nullptr);
-        CreateWindowW(L"BUTTON", L"Remove", WS_CHILD | WS_VISIBLE, 298, 494, 110, 36, window, (HMENU)IDC_REMOVE, nullptr, nullptr);
-        g_status = CreateWindowW(L"STATIC", L"0 downloads   •   Ready", WS_CHILD | WS_VISIBLE, 28, 548, 692, 24, window, (HMENU)IDC_STATUS, nullptr, nullptr);
-        HWND controls[] = {g_url, g_output, g_connections, g_list, g_status, subtitle};
+        CreateWindowW(L"BUTTON", L"Start all", WS_CHILD | WS_VISIBLE, 298, 494, 110, 36, window, (HMENU)IDC_START_ALL, nullptr, nullptr);
+        CreateWindowW(L"BUTTON", L"Pause all", WS_CHILD | WS_VISIBLE, 418, 494, 110, 36, window, (HMENU)IDC_PAUSE_ALL, nullptr, nullptr);
+        CreateWindowW(L"BUTTON", L"Remove", WS_CHILD | WS_VISIBLE, 538, 494, 90, 36, window, (HMENU)IDC_REMOVE, nullptr, nullptr);
+        CreateWindowW(L"BUTTON", L"Open", WS_CHILD | WS_VISIBLE, 28, 536, 90, 32, window, (HMENU)IDC_OPEN, nullptr, nullptr);
+        CreateWindowW(L"BUTTON", L"Clear completed", WS_CHILD | WS_VISIBLE, 128, 536, 140, 32, window, (HMENU)IDC_CLEAR, nullptr, nullptr);
+        g_status = CreateWindowW(L"STATIC", L"0 downloads   •   Ready", WS_CHILD | WS_VISIBLE, 285, 540, 435, 24, window, (HMENU)IDC_STATUS, nullptr, nullptr);
+        HWND controls[] = {g_url, g_output, g_connections, g_retries, g_limit, g_list, g_status, subtitle};
         for (HWND control : controls) SendMessageW(control, WM_SETFONT, (WPARAM)g_font, TRUE);
         SendMessageW(title, WM_SETFONT, (WPARAM)g_titleFont, TRUE);
         SendMessageW(GetDlgItem(window, IDC_ADD), WM_SETFONT, (WPARAM)g_font, TRUE);
         SendMessageW(GetDlgItem(window, IDC_START), WM_SETFONT, (WPARAM)g_font, TRUE);
         SendMessageW(GetDlgItem(window, IDC_PAUSE), WM_SETFONT, (WPARAM)g_font, TRUE);
-        SendMessageW(GetDlgItem(window, IDC_REMOVE), WM_SETFONT, (WPARAM)g_font, TRUE);
+        for (int id : {IDC_REMOVE, IDC_START_ALL, IDC_PAUSE_ALL, IDC_OPEN, IDC_CLEAR}) SendMessageW(GetDlgItem(window, id), WM_SETFONT, (WPARAM)g_font, TRUE);
         SendMessageW(GetWindow(window, GW_CHILD), WM_SETFONT, (WPARAM)g_titleFont, TRUE);
         SetTimer(window, 1, 500, nullptr); return 0;
     }
     case WM_COMMAND:
-        switch (LOWORD(wParam)) { case IDC_BROWSE: browse_output(); break; case IDC_ADD: add_download(); break; case IDC_START: { int i = ListView_GetNextItem(g_list, -1, LVNI_SELECTED); if (i >= 0) start_task(g_tasks[i]); refresh_list(); break; } case IDC_PAUSE: { int i = ListView_GetNextItem(g_list, -1, LVNI_SELECTED); if (i >= 0) pause_task(g_tasks[i]); refresh_list(); break; } case IDC_REMOVE: remove_selected(); break; } return 0;
+        switch (LOWORD(wParam)) { case IDC_BROWSE: browse_output(); break; case IDC_ADD: add_download(); break; case IDC_START: { int i = ListView_GetNextItem(g_list, -1, LVNI_SELECTED); if (i >= 0) start_task(g_tasks[i]); refresh_list(); break; } case IDC_PAUSE: { int i = ListView_GetNextItem(g_list, -1, LVNI_SELECTED); if (i >= 0) pause_task(g_tasks[i]); refresh_list(); break; } case IDC_START_ALL: start_all(); break; case IDC_PAUSE_ALL: pause_all(); break; case IDC_REMOVE: remove_selected(); break; case IDC_OPEN: open_selected(); break; case IDC_CLEAR: clear_completed(); break; } return 0;
     case WM_TIMER: update_tasks(); return 0;
     case WM_CTLCOLORSTATIC: { HDC dc = (HDC)wParam; SetTextColor(dc, RGB(218, 224, 235)); SetBkColor(dc, RGB(18, 22, 30)); return (LRESULT)g_background; }
     case WM_CTLCOLOREDIT: { HDC dc = (HDC)wParam; SetTextColor(dc, RGB(235, 240, 248)); SetBkColor(dc, RGB(36, 43, 56)); return (LRESULT)g_panel; }

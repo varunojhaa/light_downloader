@@ -21,10 +21,6 @@ jobs:
             os: windows-latest
             artifact: light-downloader-windows-x64.exe
             binary: rust-core/target/release/light-downloader-rust.exe
-          - name: macOS x64
-            os: macos-13
-            artifact: light-downloader-macos-x64
-            binary: rust-core/target/release/light-downloader-rust
           - name: Linux x64
             os: ubuntu-24.04
             artifact: light-downloader-linux-x64

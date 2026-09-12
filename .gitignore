@@ -4,8 +4,6 @@ dist/
 *.obj
 *.o
 *.exe
-*.app
-*.dmg
 *.deb
 *.tar.gz
 *.part
