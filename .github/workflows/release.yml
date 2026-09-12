@@ -53,40 +53,10 @@ jobs:
           path: ${{ matrix.artifact }}
           if-no-files-found: error
 
-  windows-gui:
-    name: Windows GUI
-    runs-on: windows-latest
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Build Win32 GUI and C worker
-        shell: pwsh
-        run: .\build-llvm.ps1
-
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup --no-progress --yes
-
-      - name: Build Windows GUI installer
-        shell: pwsh
-        run: |
-          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
-          if (!(Test-Path $iscc)) { throw "Inno Setup compiler was not found at $iscc" }
-          & $iscc 'packaging\windows\light-downloader.iss'
-          if ($LASTEXITCODE) { throw 'Inno Setup failed.' }
-
-      - name: Upload Windows installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: light-downloader-windows-installer
-          path: dist/Light-Downloader-*-setup.exe
-          if-no-files-found: error
-
   github-release:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [rust-cli, windows-gui]
+    needs: rust-cli
     runs-on: ubuntu-24.04
     steps:
       - name: Download release artifacts
