@@ -78,7 +78,7 @@ bool file_size(const std::wstring& path, uint64_t& result) {
 
 bool state_size(const std::wstring& output, uint64_t& result) {
     FILE* file = nullptr;
-    const std::wstring state = output + L".idm";
+    const std::wstring state = output + L".ld";
     if (_wfopen_s(&file, state.c_str(), L"r, ccs=UTF-8") != 0 || !file) return false;
     wchar_t magic[16] = {};
     unsigned long long size = 0;
@@ -96,9 +96,48 @@ bool state_size(const std::wstring& output, uint64_t& result) {
     }
     fclose(file);
     if (fields != 2 && size == 0) return false;
-    if (fields == 2 && wcscmp(magic, L"IDMC1") != 0) return false;
+    if (fields == 2 && wcscmp(magic, L"LDC1") != 0) return false;
     result = static_cast<uint64_t>(size);
     return true;
+}
+
+bool state_progress(const std::wstring& output, uint64_t& completed, uint64_t& total) {
+    FILE* file = nullptr;
+    const std::wstring state = output + L".ld";
+    if (_wfopen_s(&file, state.c_str(), L"r, ccs=UTF-8") != 0 || !file) return false;
+    wchar_t magic[16] = {};
+    unsigned long long size = 0;
+    int range = 0, connections = 0;
+    if (fwscanf_s(file, L"%15ls\n%llu\n%d\n%d\n", magic, ARRAYSIZE(magic), &size, &range, &connections) == 4 &&
+        wcscmp(magic, L"LDC1") == 0 && connections > 0) {
+        for (int i = 0; i < connections; ++i) {
+            unsigned long long first = 0, last = 0, done = 0;
+            if (fwscanf_s(file, L"%llu %llu %llu\n", &first, &last, &done) != 3) { fclose(file); return false; }
+            completed += done;
+        }
+        fclose(file);
+        total = static_cast<uint64_t>(size);
+        return true;
+    }
+    rewind(file);
+    wchar_t line[512] = {};
+    std::wstring json;
+    while (fgetws(line, ARRAYSIZE(line), file)) json += line;
+    fclose(file);
+    const size_t sizeMarker = json.find(L"\"size\"");
+    const size_t segmentsMarker = json.find(L"\"segments\"");
+    if (sizeMarker == std::wstring::npos || segmentsMarker == std::wstring::npos) return false;
+    const size_t sizeColon = json.find(L':', sizeMarker);
+    if (sizeColon == std::wstring::npos) return false;
+    total = _wcstoui64(json.c_str() + sizeColon + 1, nullptr, 10);
+    size_t cursor = segmentsMarker;
+    while ((cursor = json.find(L"\"completed\"", cursor)) != std::wstring::npos) {
+        const size_t colon = json.find(L':', cursor);
+        if (colon == std::wstring::npos) break;
+        completed += _wcstoui64(json.c_str() + colon + 1, nullptr, 10);
+        cursor = colon + 1;
+    }
+    return total != 0;
 }
 
 void set_status(const std::wstring& message) { set_text(g_status, message); }
@@ -112,12 +151,18 @@ void refresh_list() {
         uint64_t total = 0, completed = 0;
         file_size(task.output, total);
         if (!total) state_size(task.output, total);
-        file_size(task.part, completed);
+        uint64_t stateTotal = 0, stateCompleted = 0;
+        if (state_progress(task.output, stateCompleted, stateTotal)) {
+            completed = stateCompleted;
+            if (!total) total = stateTotal;
+        } else {
+            file_size(task.part, completed);
+        }
         const bool running = task.process && WaitForSingleObject(task.process, 0) == WAIT_TIMEOUT;
         std::wstring state = task.paused ? L"Paused" : (running ? L"Downloading" : (total ? L"Complete" : L"Ready"));
         wchar_t percent[32];
         const int pct = total ? static_cast<int>((completed * 100) / total) : 0;
-        swprintf_s(percent, L"%d%%", std::min(100, pct));
+        swprintf_s(percent, L"%d%%", pct < 100 ? pct : 100);
 
         LVITEMW item{}; item.mask = LVIF_TEXT; item.iItem = static_cast<int>(i);
         std::wstring name = file_name(task.output);
@@ -142,7 +187,7 @@ std::wstring worker_path() {
     const size_t slash = path.find_last_of(L"\\/");
     const std::wstring folder = slash == std::wstring::npos ? L"" : path.substr(0, slash + 1);
     wchar_t backend[32] = {};
-    if (GetEnvironmentVariableW(L"IDM_BACKEND", backend, ARRAYSIZE(backend)) && _wcsicmp(backend, L"rust") == 0) {
+    if (GetEnvironmentVariableW(L"LD_BACKEND", backend, ARRAYSIZE(backend)) && _wcsicmp(backend, L"rust") == 0) {
         const std::wstring rust = folder + L"light-downloader-rust.exe";
         if (GetFileAttributesW(rust.c_str()) != INVALID_FILE_ATTRIBUTES) return rust;
     }
@@ -173,7 +218,7 @@ bool start_task(Task& task) {
 void pause_task(Task& task) {
     if (!task.process || WaitForSingleObject(task.process, 0) != WAIT_TIMEOUT) return;
     GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, GetProcessId(task.process));
-    TerminateProcess(task.process, 1);
+    if (WaitForSingleObject(task.process, 3000) == WAIT_TIMEOUT) TerminateProcess(task.process, 1);
     CloseHandle(task.process); task.process = nullptr; task.paused = true;
 }
 

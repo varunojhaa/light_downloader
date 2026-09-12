@@ -23,10 +23,10 @@ $guiOutput = Join-Path $out 'LightDownloader.exe'
 New-Item -ItemType Directory -Force $out | Out-Null
 
 & $clang /nologo /O2 /W4 /DWIN32_LEAN_AND_MEAN /DUNICODE /D_UNICODE @includeFlags `
-  (Join-Path $root 'idm.c') "/Fe:$workerOutput" @libraryFlags winhttp.lib
-if ($LASTEXITCODE) { throw 'idm.c compilation failed' }
+  (Join-Path $root 'ld.c') "/Fe:$workerOutput" @libraryFlags winhttp.lib
+if ($LASTEXITCODE) { throw 'ld.c compilation failed' }
 
 & $clang /nologo /O2 /W4 /EHsc /std:c++17 /DWIN32_LEAN_AND_MEAN /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 @includeFlags `
-  (Join-Path $root 'idm_gui.cpp') "/Fe:$guiOutput" @libraryFlags comctl32.lib comdlg32.lib shell32.lib shlwapi.lib user32.lib gdi32.lib
-if ($LASTEXITCODE) { throw 'idm_gui.cpp compilation failed' }
+  (Join-Path $root 'ld_gui.cpp') "/Fe:$guiOutput" @libraryFlags comctl32.lib comdlg32.lib shell32.lib shlwapi.lib user32.lib gdi32.lib
+if ($LASTEXITCODE) { throw 'ld_gui.cpp compilation failed' }
 Write-Host "Built $out\light-downloader.exe and $out\LightDownloader.exe with LLVM clang-cl"

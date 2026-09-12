@@ -9,7 +9,7 @@ dist/
 *.deb
 *.tar.gz
 *.part
-*.idm
+*.ld
 .vs/
 .vscode/*.log
 target/

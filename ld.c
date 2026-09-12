@@ -10,7 +10,7 @@
 
 #define MAX_SEGMENTS 16
 #define BUF_SIZE (64 * 1024)
-#define STATE_MAGIC L"IDMC1"
+#define STATE_MAGIC L"LDC1"
 
 typedef struct {
     uint64_t first, last, completed;
@@ -160,7 +160,7 @@ int wmain(int argc, wchar_t **argv) {
     for (int i = 2; i < argc; ++i) { if (!_wcsicmp(argv[i], L"--connections") && i + 1 < argc) t.connections = _wtoi(argv[++i]); else if (!_wcsicmp(argv[i], L"--retries") && i + 1 < argc) t.retries = _wtoi(argv[++i]); else if (!_wcsicmp(argv[i], L"--limit") && i + 1 < argc) t.limit = _wcstoui64(argv[++i], NULL, 10); }
     if (t.connections < 1) t.connections = 1; if (t.connections > MAX_SEGMENTS) t.connections = MAX_SEGMENTS; if (t.retries < 0) t.retries = 0;
     if (!t.output) { const wchar_t *p = wcsrchr(t.url, L'/'); t.output = dupw(p ? p + 1 : L"download.bin"); if (!*t.output) { free(t.output); t.output = dupw(L"download.bin"); } }
-    t.part = with_suffix(t.output, L".part"); t.state = with_suffix(t.output, L".idm");
+    t.part = with_suffix(t.output, L".part"); t.state = with_suffix(t.output, L".ld");
     if (!t.url || !t.output || !t.part || !t.state) { fwprintf(stderr, L"Out of memory\n"); free_task(&t); return 2; }
     g_stop_flag = &t.stop; SetConsoleCtrlHandler(console_handler, TRUE); t.mutex = CreateMutexW(NULL, FALSE, NULL); t.file = CreateFileW(t.part, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (t.file == INVALID_HANDLE_VALUE) { fwprintf(stderr, L"Cannot open %ls (%lu)\n", t.part, GetLastError()); free_task(&t); return 2; }

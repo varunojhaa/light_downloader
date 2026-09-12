@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const MAGIC: &str = "IDMR2";
+const MAGIC: &str = "LDR2";
 const BUFFER_SIZE: usize = 64 * 1024;
 const MAX_CONNECTIONS: usize = 16;
 
@@ -23,7 +23,7 @@ impl Stop { fn load(&self) -> bool { *self.0.lock().unwrap_or_else(|e| e.into_in
 
 fn usage() { println!("Light Downloader CLI\nUsage: light-downloader URL [OUTPUT] [--connections N] [--retries N] [--limit BYTES_PER_SECOND]"); }
 fn arg_value(args: &[String], name: &str, default: u64) -> u64 { args.windows(2).find(|p| p[0] == name).and_then(|p| p[1].parse().ok()).unwrap_or(default) }
-fn state_path(output: &Path) -> PathBuf { PathBuf::from(format!("{}.idm", output.display())) }
+fn state_path(output: &Path) -> PathBuf { PathBuf::from(format!("{}.ld", output.display())) }
 fn part_path(output: &Path) -> PathBuf { PathBuf::from(format!("{}.part", output.display())) }
 
 fn replace_file(from: &Path, to: &Path) -> io::Result<()> {

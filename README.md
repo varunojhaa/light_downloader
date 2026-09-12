@@ -1,6 +1,6 @@
 # Light Downloader
 
-Lightweight IDM-style native download manager. The default backend is the C
+Lightweight LD-style native download manager. The default backend is the C
 WinHTTP worker because it is the lightest option: it uses Windows networking,
 bounded 64 KiB buffers, one thread per configured connection, and no runtime
 or third-party DLLs. The Win32 GUI is written in C++17. A Rust worker is kept
@@ -10,7 +10,7 @@ under `rust-core` as an optional backend.
 
 - HTTP and HTTPS downloads through WinHTTP, including system proxy handling.
 - Up to 16 concurrent byte ranges with retry/backoff.
-- Resume using `.part` files and `.idm` segment metadata.
+- Resume using `.part` files and `.ld` segment metadata.
 - Atomic metadata writes and safe final replacement.
 - Pause/resume from the GUI or Ctrl+C in the worker.
 - Progress, size, speed, and connection count in the GUI.
@@ -31,7 +31,7 @@ build-llvm\LightDownloader.exe
 
 This creates `build-llvm\light-downloader.exe` and `build-llvm\LightDownloader.exe` with
 `clang-cl.exe`. The GUI launches `light-downloader.exe` by default. To explicitly use the
-Rust worker, place `light-downloader-rust.exe` beside the GUI and set `$env:IDM_BACKEND =
+Rust worker, place `light-downloader-rust.exe` beside the GUI and set `$env:LD_BACKEND =
 'rust'`.
 
 The compiler command is kept in `build-llvm.ps1` so LLVM users can build without
@@ -45,7 +45,7 @@ build-llvm\light-downloader.exe --help
 build-llvm\light-downloader.exe --help
 ```
 
-State is saved beside the output as `<output>.part` and `<output>.idm`; rerun
+State is saved beside the output as `<output>.part` and `<output>.ld`; rerun
 the same command after a pause or interruption to resume.
 
 ## AB Download Manager compatibility scope
@@ -54,13 +54,13 @@ The AB Download Manager source was reviewed across its downloader core,
 HTTP/HLS/DASH jobs, queue manager, persistence, checksum screens, proxy/DNS
 settings, scheduling, browser/integration server, notifications, and platform
 UI. This repository currently implements the low-resource desktop HTTP(S)
-core and IDM-like GUI. HLS/DASH parsing, checksum verification UI, scheduled
+core and LD-like GUI. HLS/DASH parsing, checksum verification UI, scheduled
 queues, authentication editor, browser extension protocol, embedded API/server,
 notifications, and platform-specific settings are not yet implemented here;
 they require additional protocol and UI code and should not be represented as
 complete merely by matching the downloader executable.
 
-The Rust CLI uses the same `.part`/`.idm` concept and is the portable backend
+The Rust CLI uses the same `.part`/`.ld` concept and is the portable backend
 for Windows, macOS, and Linux. It uses bounded 64 KiB buffers, a capped worker
 pool, retry backoff, atomic checkpoints, and no GUI/runtime dependency. The C
 WinHTTP worker remains the recommended Windows backend when minimum memory use
