@@ -38,6 +38,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
+          cache: false
 
       - name: Build executable
         run: cargo build --release --manifest-path rust-core/Cargo.toml

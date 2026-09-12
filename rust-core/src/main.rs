@@ -50,7 +50,9 @@ fn probe(client: &Client, url: &str) -> Result<(u64, bool), Box<dyn std::error::
         return Ok((size, ranges));
     }
     let response = client.get(url).header(RANGE, "bytes=0-0").send()?.error_for_status()?;
-    Ok((total_from_range(&response).or_else(|| response_size(&response)).ok_or("server did not provide a file size")?, response.status().as_u16() == 206))
+    let size = total_from_range(&response).or_else(|| response_size(&response))
+        .ok_or_else(|| io::Error::other("server did not provide a file size"))?;
+    Ok((size, response.status().as_u16() == 206))
 }
 
 fn fetch_segment(client: &Client, url: &str, part: &Path, segment: &mut Segment, ranges: bool, retries: u64, limit: u64, stop: &Stop) -> Result<(), String> {
@@ -100,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let flag = Arc::new(Mutex::new(false)); let handler_flag = flag.clone();
     ctrlc::set_handler(move || { *handler_flag.lock().unwrap_or_else(|e| e.into_inner()) = true; }).ok();
     let stop = Stop(flag);
-    let mut state: State = match fs::read(&state_file).ok().and_then(|d| serde_json::from_slice(&d).ok()) {
+    let mut state: State = match fs::read(&state_file).ok().and_then(|d| serde_json::from_slice::<State>(&d).ok()) {
         Some(s) if s.magic == MAGIC && s.url == url && s.segments.iter().all(|x| x.first <= x.last && x.completed <= x.last - x.first + 1) => s,
         _ => { let (size, ranges) = probe(&client, &url)?; let count = if ranges && size > 0 { connections.min(size as usize) } else { 1 }; let chunk = size.div_ceil(count as u64); let segments = (0..count).filter_map(|i| { let first = i as u64 * chunk; (first < size).then(|| Segment { first, last: (first + chunk).min(size) - 1, completed: 0 }) }).collect(); State { magic: MAGIC.into(), url: url.clone(), size, range_supported: ranges, segments } }
     };
@@ -127,8 +129,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     state.segments = shared.lock().unwrap_or_else(|e| e.into_inner()).clone(); save_state(&state_file, &state)?;
-    if let Some(e) = error { return Err(e.into()); }
+    if let Some(e) = error { return Err(io::Error::other(e).into()); }
     if stop.load() { println!("Paused. Run the same command to resume."); return Ok(()); }
-    if state.segments.iter().any(|s| s.completed < s.last - s.first + 1) { return Err("download incomplete".into()); }
+    if state.segments.iter().any(|s| s.completed < s.last - s.first + 1) {
+        return Err(io::Error::other("download incomplete").into());
+    }
     replace_file(&part, &output)?; fs::remove_file(state_file).ok(); println!("Completed: {}", output.display()); Ok(())
 }

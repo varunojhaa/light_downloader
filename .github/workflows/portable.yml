@@ -13,5 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
       - run: cargo build --release --manifest-path rust-core/Cargo.toml
       - run: cargo test --manifest-path rust-core/Cargo.toml
