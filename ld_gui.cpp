@@ -24,6 +24,9 @@ struct Task {
     std::wstring url;
     std::wstring output;
     std::wstring part;
+    int connections = 8;
+    int retries = 3;
+    uint64_t limit = 0;
     HANDLE process = nullptr;
     ULONGLONG started = 0;
     uint64_t lastBytes = 0;
@@ -125,9 +128,6 @@ bool state_progress(const std::wstring& output, uint64_t& completed, uint64_t& t
     rewind(file);
     wchar_t line[512] = {};
     std::wstring json;
-    int connections = 8;
-    int retries = 3;
-    uint64_t limit = 0;
     while (fgetws(line, ARRAYSIZE(line), file)) json += line;
     fclose(file);
     const size_t sizeMarker = json.find(L"\"size\"");
