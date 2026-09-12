@@ -39,7 +39,7 @@ static BOOL WINAPI console_handler(DWORD type) {
 }
 
 static void usage(void) {
-    wprintf(L"IDM-C 1.0\nUsage: idm URL [OUTPUT] [--connections N] [--retries N] [--limit BYTES_PER_SECOND]\n\n"
+    wprintf(L"Light Downloader 1.0\nUsage: light-downloader URL [OUTPUT] [--connections N] [--retries N] [--limit BYTES_PER_SECOND]\n\n"
             L"Ctrl+C pauses safely; run the same command again to resume.\n");
 }
 
@@ -85,7 +85,7 @@ static HINTERNET open_request(Task *t, uint64_t first, uint64_t last, BOOL head,
     URL_COMPONENTS c = { sizeof(c) }; wchar_t host[256], path[2048], range[128];
     c.lpszHostName = host; c.dwHostNameLength = ARRAYSIZE(host); c.lpszUrlPath = path; c.dwUrlPathLength = ARRAYSIZE(path);
     if (!WinHttpCrackUrl(t->url, 0, 0, &c) || c.dwHostNameLength >= ARRAYSIZE(host) || c.dwUrlPathLength >= ARRAYSIZE(path)) return NULL;
-    *session = WinHttpOpen(L"IDM-C/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, NULL, NULL, 0);
+    *session = WinHttpOpen(L"LightDownloader/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, NULL, NULL, 0);
     if (!*session) return NULL;
     HINTERNET connect = WinHttpConnect(*session, host, c.nPort, 0);
     if (!connect) return NULL;

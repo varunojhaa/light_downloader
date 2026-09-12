@@ -1,5 +1,5 @@
 [package]
-name = "idm-rust"
+name = "light-downloader-rust"
 version = "1.0.0"
 edition = "2021"
 

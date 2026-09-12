@@ -143,10 +143,10 @@ std::wstring worker_path() {
     const std::wstring folder = slash == std::wstring::npos ? L"" : path.substr(0, slash + 1);
     wchar_t backend[32] = {};
     if (GetEnvironmentVariableW(L"IDM_BACKEND", backend, ARRAYSIZE(backend)) && _wcsicmp(backend, L"rust") == 0) {
-        const std::wstring rust = folder + L"idm-rust.exe";
+        const std::wstring rust = folder + L"light-downloader-rust.exe";
         if (GetFileAttributesW(rust.c_str()) != INVALID_FILE_ATTRIBUTES) return rust;
     }
-    return folder + L"idm.exe";
+    return folder + L"light-downloader.exe";
 }
 
 bool start_task(Task& task) {
@@ -158,7 +158,7 @@ bool start_task(Task& task) {
     STARTUPINFOW startup{}; startup.cb = sizeof(startup);
     PROCESS_INFORMATION process{};
     if (!CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP, nullptr, nullptr, &startup, &process)) {
-        set_status(L"Could not start downloader. Build idm.exe beside IDM-C.exe.");
+        set_status(L"Could not start downloader. Build light-downloader.exe beside LightDownloader.exe.");
         return false;
     }
     CloseHandle(process.hThread);
@@ -236,7 +236,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wParam, LPARAM lP
         g_background = CreateSolidBrush(RGB(18, 22, 30)); g_panel = CreateSolidBrush(RGB(28, 34, 45));
         g_font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
         g_titleFont = CreateFontW(-25, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-        HWND title = CreateWindowW(L"STATIC", L"IDM-C", WS_CHILD | WS_VISIBLE, 28, 20, 220, 36, window, nullptr, nullptr, nullptr);
+        HWND title = CreateWindowW(L"STATIC", L"Light Downloader", WS_CHILD | WS_VISIBLE, 28, 20, 300, 36, window, nullptr, nullptr, nullptr);
         HWND subtitle = CreateWindowW(L"STATIC", L"Fast, reliable downloads", WS_CHILD | WS_VISIBLE, 30, 55, 300, 24, window, nullptr, nullptr, nullptr);
         CreateWindowW(L"STATIC", L"URL", WS_CHILD | WS_VISIBLE, 28, 78, 100, 18, window, nullptr, nullptr, nullptr);
         g_url = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 28, 96, 510, 34, window, (HMENU)IDC_URL, nullptr, nullptr);
@@ -280,10 +280,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wParam, LPARAM lP
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     INITCOMMONCONTROLSEX common{sizeof(common), ICC_LISTVIEW_CLASSES}; InitCommonControlsEx(&common);
-    WNDCLASSEXW klass{sizeof(klass)}; klass.hInstance = instance; klass.lpfnWndProc = window_proc; klass.lpszClassName = L"IDMCMainWindow";
+    WNDCLASSEXW klass{sizeof(klass)}; klass.hInstance = instance; klass.lpfnWndProc = window_proc; klass.lpszClassName = L"LightDownloaderMainWindow";
     klass.hCursor = LoadCursorW(nullptr, IDC_ARROW); klass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     if (!RegisterClassExW(&klass)) return 1;
-    HWND window = CreateWindowExW(0, klass.lpszClassName, L"IDM-C — Download Manager", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, 770, 635, nullptr, nullptr, instance, nullptr);
+    HWND window = CreateWindowExW(0, klass.lpszClassName, L"Light Downloader", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, 770, 635, nullptr, nullptr, instance, nullptr);
     if (!window) return 1;
     ShowWindow(window, show); UpdateWindow(window);
     MSG message{}; while (GetMessageW(&message, nullptr, 0, 0) > 0) { TranslateMessage(&message); DispatchMessageW(&message); }
