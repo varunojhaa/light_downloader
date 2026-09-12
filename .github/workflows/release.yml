@@ -42,6 +42,27 @@ jobs:
       - name: Run tests
         run: cargo test --release --manifest-path rust-core/Cargo.toml
 
+      - name: Sign Windows executable
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CODESIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_CODESIGNING_PASSWORD: ${{ secrets.WINDOWS_CODESIGNING_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGNING_CERTIFICATE_BASE64) -or
+              [string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGNING_PASSWORD)) {
+            throw 'Windows signing secrets are missing. Configure WINDOWS_CODESIGNING_CERTIFICATE_BASE64 and WINDOWS_CODESIGNING_PASSWORD before publishing Windows releases.'
+          }
+
+          $certificate = Join-Path $env:RUNNER_TEMP 'light-downloader-signing.pfx'
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_CODESIGNING_CERTIFICATE_BASE64))
+          $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
+          if (!$signtool) { throw 'signtool.exe was not found on the Windows runner.' }
+
+          & $signtool sign /quiet /fd SHA256 /f $certificate /p $env:WINDOWS_CODESIGNING_PASSWORD /tr http://timestamp.digicert.com /td SHA256 'rust-core/target/release/light-downloader-rust.exe'
+          if ($LASTEXITCODE) { throw 'Authenticode signing failed.' }
+          Remove-Item -Force $certificate
+
       - name: Rename executable
         shell: bash
         run: cp "${{ matrix.binary }}" "${{ matrix.artifact }}"

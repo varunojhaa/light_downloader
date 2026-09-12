@@ -108,6 +108,22 @@ git push origin master --tags
 After the workflow finishes, open **Releases** on GitHub and download either
 the Windows x64 executable or the Linux x64 executable.
 
+### Windows Smart App Control and signing
+
+Windows Smart App Control may block an unsigned release executable. Windows
+release builds must therefore be Authenticode-signed with a code-signing
+certificate from a publicly trusted certificate authority. Before creating a
+tagged release, configure these GitHub repository secrets:
+
+- `WINDOWS_CODESIGNING_CERTIFICATE_BASE64`: the base64-encoded PFX certificate
+- `WINDOWS_CODESIGNING_PASSWORD`: the PFX password
+
+The release workflow signs the Windows executable and adds a trusted timestamp.
+Do not use a self-signed certificate for distribution: it will not establish
+publisher trust for Smart App Control. Smart App Control can also use Microsoft
+reputation signals, so a newly issued certificate may still require reputation
+to build before every machine accepts the file automatically.
+
 ## Open source and GitHub
 
 This project is released under the MIT License. To publish it, create an empty
