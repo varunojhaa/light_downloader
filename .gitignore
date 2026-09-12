@@ -1,0 +1,15 @@
+build-llvm/
+build/
+dist/
+*.obj
+*.o
+*.exe
+*.app
+*.dmg
+*.deb
+*.tar.gz
+*.part
+*.idm
+.vs/
+.vscode/*.log
+target/

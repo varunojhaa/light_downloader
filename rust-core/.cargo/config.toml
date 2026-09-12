@@ -1,0 +1,6 @@
+[target.x86_64-pc-windows-msvc]
+linker = "C:\\Program Files\\LLVM\\bin\\clang-cl.exe"
+rustflags = [
+    "-C",
+    "link-arg=-fuse-ld=lld-link"
+]
