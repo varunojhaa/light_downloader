@@ -28,5 +28,8 @@ Source: "..\..\build-llvm\light-downloader.exe"; DestDir: "{app}"; Flags: ignore
 Name: "{group}\Light Downloader"; Filename: "{app}\LightDownloader.exe"
 Name: "{autodesktop}\Light Downloader"; Filename: "{app}\LightDownloader.exe"; Tasks: desktopicon
 
+[Run]
+Filename: "{app}\LightDownloader.exe"; Description: "Launch Light Downloader"; Flags: postinstall nowait skipifsilent
+
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked

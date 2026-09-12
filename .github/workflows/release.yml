@@ -64,13 +64,23 @@ jobs:
         shell: pwsh
         run: .\build-llvm.ps1
 
-      - name: Upload Windows executables
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
+      - name: Build Windows GUI installer
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler was not found at $iscc" }
+          & $iscc 'packaging\windows\light-downloader.iss'
+          if ($LASTEXITCODE) { throw 'Inno Setup failed.' }
+
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: light-downloader-windows-gui
-          path: |
-            build-llvm/LightDownloader.exe
-            build-llvm/light-downloader.exe
+          name: light-downloader-windows-installer
+          path: dist/Light-Downloader-*-setup.exe
           if-no-files-found: error
 
   github-release:
@@ -79,14 +89,14 @@ jobs:
     needs: [rust-cli, windows-gui]
     runs-on: ubuntu-24.04
     steps:
-      - name: Download all executables
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: light-downloader-*
           path: dist
           merge-multiple: true
 
-      - name: Publish release with executables
+      - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

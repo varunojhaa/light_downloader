@@ -79,11 +79,16 @@ cargo build --release --manifest-path rust-core/Cargo.toml
 # or: cmake -S . -B build && cmake --build build
 ```
 
-Windows builds can be packaged with Inno Setup:
+The Windows release includes a GUI installer named
+`Light-Downloader-1.0.0-setup.exe`. Run that installer rather than opening the
+worker executable directly; it installs both the GUI and its downloader worker,
+creates a Start Menu shortcut, and can create a desktop shortcut.
+
+To build the installer locally, install Inno Setup 6 and run:
 
 ```powershell
 .\build-llvm.ps1
-iscc packaging\windows\light-downloader.iss
+.\packaging\windows\build-installer.ps1
 ```
 
 `packaging/unix/package.sh` packages the native Rust CLI as a Linux tarball and,
@@ -101,9 +106,9 @@ cross-platform because it uses Win32 controls.
 
 The repository includes `.github/workflows/release.yml`. In GitHub, open
 **Actions → Build release executables → Run workflow**. A manual run creates
-downloadable Actions artifacts for the Rust CLI on Windows and Linux,
-plus the Windows GUI and C worker. Creating a version tag automatically builds
-the files and publishes them on a GitHub Release.
+downloadable Actions artifacts for the Rust CLI on Windows and Linux, plus a
+Windows GUI installer. Creating a version tag automatically builds the files
+and publishes them on a GitHub Release.
 
 ```powershell
 git add .
@@ -112,8 +117,9 @@ git tag v1.0.0
 git push origin master --tags
 ```
 
-After the workflow finishes, open **Releases** on GitHub. The executables will
-be attached to the `v1.0.0` release for download.
+After the workflow finishes, open **Releases** on GitHub and download the
+`Light-Downloader-1.0.0-setup.exe` installer for Windows. The raw Rust CLI
+executable remains available separately for command-line use.
 
 ## Open source and GitHub
 
